@@ -19,7 +19,8 @@ $iterator = Finder::create()
 
 $versions = GitVersionCollection::create($dir)
     ->add('1.1', '1.1')
-    ->add('master', 'Master');
+    ->add('1.2', '1.2')
+    ->add('master', 'master');
 
 return new Sami($iterator, array(
     'title'                => 'Laravel Facebook Messenger API',

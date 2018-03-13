@@ -7,10 +7,12 @@
 
 namespace Casperlaitw\LaravelFbMessenger\Contracts;
 
+use Casperlaitw\LaravelFbMessenger\Contracts\Messages\UserInterface;
 use Casperlaitw\LaravelFbMessenger\Contracts\Messages\Message;
 use Casperlaitw\LaravelFbMessenger\Contracts\Messages\ThreadInterface;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\ClientException;
+use Illuminate\Broadcasting\BroadcastException;
 
 /**
  * Class Bot
@@ -46,6 +48,11 @@ class Bot
     protected $token = null;
 
     /**
+     * @var null
+     */
+    private $debug = null;
+
+    /**
      * FbBotApp constructor.
      * @param string $token
      */
@@ -53,6 +60,14 @@ class Bot
     {
         $this->client = new Client(['base_uri' => $this->apiUrl]);
         $this->token = $token;
+    }
+
+    /**
+     * @param $debug
+     */
+    public function setDebug($debug)
+    {
+        $this->debug = $debug;
     }
 
     /**
@@ -68,21 +83,39 @@ class Bot
     protected function call($url, $data, $type = self::TYPE_POST)
     {
         try {
+            $options = [
+                'query' => [
+                    'access_token' => $this->token,
+                ],
+            ];
+
+            switch ($type) {
+                case self::TYPE_DELETE:
+                case self::TYPE_POST:
+                    $options = array_merge($options, [
+                        'headers' => [
+                            'Content-Type' => 'application/json'
+                        ],
+                        'body' => json_encode($data),
+                    ]);
+                    break;
+                case self::TYPE_GET:
+                    $options['query'] = array_merge($options['query'], $data);
+                    break;
+            }
+
             $response = $this->client->request(
                 $type,
                 $url,
-                [
-                    'headers' => [
-                        'Content-Type' => 'application/json'
-                    ],
-                    'body' => json_encode($data),
-                    'query' => [
-                        'access_token' => $this->token,
-                    ],
-                ]
+                $options
             );
+
+            $this->debug($data, $response->getBody(), $response->getStatusCode());
+
             return json_decode($response->getBody(), true);
         } catch (ClientException $ex) {
+            $this->debug($data, $ex->getResponse()->getBody(), $ex->getResponse()->getStatusCode());
+
             return json_decode($ex->getResponse()->getBody(), true);
         }
     }
@@ -93,14 +126,19 @@ class Bot
      * If instance of ThreadInterface, auto turn to thread_settings endpoint
      *
      * @param Message $message
-     * @param string                  $type
+     * @param string $type
      *
-     * @return HandleMessageResponse
+     * @return HandleMessageResponse|array
+     * @throws \RuntimeException
      */
     public function send($message, $type = self::TYPE_POST)
     {
         if ($message instanceof ThreadInterface) {
             return $this->sendThreadSetting($message->toData(), $type);
+        }
+
+        if ($message instanceof UserInterface) {
+            return $this->sendUserApi($message);
         }
 
         return $this->sendMessage($message->toData());
@@ -127,5 +165,34 @@ class Bot
     protected function sendThreadSetting($message, $type = self::TYPE_POST)
     {
         return new HandleMessageResponse($this->call('me/thread_settings', $message, $type));
+    }
+
+    /**
+     * Send user endpoint
+     *
+     * @param $message
+     * @return array
+     * @throws \RuntimeException
+     */
+    protected function sendUserApi($message)
+    {
+        return $this->call($message->getSender(), [], self::TYPE_GET);
+    }
+
+    /**
+     * @param $request
+     * @param $response
+     * @param $status
+     */
+    protected function debug($request, $response, $status)
+    {
+        if ($this->debug === null) {
+            return;
+        }
+        try {
+            $this->debug->setRequest($request)->setResponse(json_decode($response))->setStatus($status)->broadcast();
+        } catch (BroadcastException $ex) {
+            return;
+        }
     }
 }

@@ -2,10 +2,14 @@
 
 namespace Casperlaitw\LaravelFbMessenger;
 
+use Casperlaitw\LaravelFbMessenger\Commands\DomainWhitelistingCommand;
 use Casperlaitw\LaravelFbMessenger\Commands\GetStartButtonCommand;
 use Casperlaitw\LaravelFbMessenger\Commands\GreetingTextCommand;
 use Casperlaitw\LaravelFbMessenger\Commands\PersistentMenuCommand;
+use Casperlaitw\LaravelFbMessenger\Contracts\Debug\Debug;
+use Casperlaitw\LaravelFbMessenger\Contracts\Debug\Handler;
 use Casperlaitw\LaravelFbMessenger\Providers\RouteServiceProvider;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -23,13 +27,22 @@ class LaravelFbMessengerServiceProvider extends ServiceProvider
     /**
      * Perform post-registration booting of services.
      *
-     * @return void
+     * @throws \InvalidArgumentException
      */
     public function boot()
     {
         $this->publishes([
             $this->configPath => $this->app->configPath().'/fb-messenger.php',
         ], 'config');
+        $this->loadViewsFrom(__DIR__ . '/../resources/views', 'laravel-fb-messenger');
+        $this->publishes([__DIR__.'/../public' => $this->app->basePath().'/public/vendor'], 'public');
+
+        if ($this->app['config']->get('fb-messenger.debug')) {
+            $this->app->extend(ExceptionHandler::class, function ($exceptionHandler, $app) {
+                $debug = $app->make(Debug::class);
+                return new Handler($exceptionHandler, $debug);
+            });
+        }
     }
 
     /**
@@ -41,6 +54,7 @@ class LaravelFbMessengerServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom($this->configPath, 'fb-messenger');
         $this->app->register(RouteServiceProvider::class);
+        $this->app->singleton(Debug::class, Debug::class);
         $this->registerCommands();
     }
 
@@ -53,6 +67,7 @@ class LaravelFbMessengerServiceProvider extends ServiceProvider
             GreetingTextCommand::class,
             GetStartButtonCommand::class,
             PersistentMenuCommand::class,
+            DomainWhitelistingCommand::class,
         ]);
     }
 }

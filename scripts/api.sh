@@ -9,7 +9,7 @@ fi
 
 base=$(pwd)
 sami=${base}/scripts/sami
-default="1.1"
+default="1.2"
 rev=$(git rev-parse --short HEAD)
 
 cd ${sami}
